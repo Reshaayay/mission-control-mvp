@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mission Control MVP</title>
+    <style>
+      body { font-family: Inter, system-ui, Arial; margin: 0; background: #0b1020; color: #e9eefc; }
+      .wrap { padding: 20px; max-width: 1200px; margin: 0 auto; }
+      .row { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+      .card { background: #131a33; border: 1px solid #283056; border-radius: 12px; padding: 14px; }
+      h1,h2,h3 { margin: 0 0 10px; }
+      .agents li { margin: 8px 0; padding: 8px; border-radius: 8px; background: #0f1530; }
+      .columns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+      .col { background: #101733; border-radius: 10px; padding: 10px; min-height: 280px; }
+      .task { background: #1a2347; border: 1px solid #2c3769; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+      input,select,textarea,button { width: 100%; margin-top: 6px; padding: 8px; border-radius: 8px; border: 1px solid #334073; background: #0f1530; color: #fff; }
+      button { cursor: pointer; background: #2856ff; border: none; }
+      small { color: #9fb2ff; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>🛰️ Mission Control MVP</h1>
+      <small>Live agents, queue, in-progress tasks, and orchestrated dispatch.</small>
+
+      <div class="row" style="margin-top:14px;">
+        <div class="card">
+          <h3>Create Task</h3>
+          <label>Title</label>
+          <input id="title" placeholder="Build user auth flow" />
+          <label>Assign to Agent</label>
+          <select id="agentId"></select>
+          <label>Details</label>
+          <textarea id="details" rows="4" placeholder="Constraints, deliverables, deadline..."></textarea>
+          <button onclick="createTask()">Create Task</button>
+        </div>
+
+        <div class="card">
+          <h3>Agents</h3>
+          <ul id="agents" class="agents"></ul>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3>Mission Queue</h3>
+        <div class="columns">
+          <div class="col"><strong>Queued</strong><div id="queued"></div></div>
+          <div class="col"><strong>In Progress</strong><div id="in_progress"></div></div>
+          <div class="col"><strong>Done</strong><div id="done"></div></div>
+          <div class="col"><strong>Failed</strong><div id="failed"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let state = { agents: [], tasks: [], sessionsByAgent: {} };
+
+      async function refresh() {
+        const res = await fetch('/api/overview');
+        state = await res.json();
+        render();
+      }
+
+      function render() {
+        const sel = document.getElementById('agentId');
+        sel.innerHTML = state.agents.map(a => `<option value="${a.id}">${a.id} (${a.model})</option>`).join('');
+
+        document.getElementById('agents').innerHTML = state.agents.map(a => {
+          const active = (state.sessionsByAgent[a.id] || []).length;
+          return `<li><strong>${a.id}</strong><br/><small>${a.model}</small><br/><small>sessions: ${active}</small></li>`;
+        }).join('');
+
+        ['queued','in_progress','done','failed'].forEach(k => {
+          document.getElementById(k).innerHTML = state.tasks
+            .filter(t => t.status === k)
+            .map(t => `<div class="task">
+              <strong>${t.title}</strong><br/>
+              <small>${t.agentId}</small><br/>
+              ${k === 'queued' ? `<button onclick="dispatchTask('${t.id}')">Dispatch</button>` : ''}
+            </div>`).join('');
+        });
+      }
+
+      async function createTask() {
+        const title = document.getElementById('title').value.trim();
+        const agentId = document.getElementById('agentId').value;
+        const details = document.getElementById('details').value.trim();
+        if (!title) return alert('Title required');
+        await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, agentId, details })
+        });
+        document.getElementById('title').value = '';
+        document.getElementById('details').value = '';
+        refresh();
+      }
+
+      async function dispatchTask(id) {
+        await fetch(`/api/tasks/${id}/dispatch`, { method: 'POST' });
+        refresh();
+      }
+
+      refresh();
+      setInterval(refresh, 5000);
+    </script>
+  </body>
+</html>
